@@ -1,0 +1,827 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link rel="stylesheet" href="{% static 'css/headers.css' %}" />
+  <link rel="stylesheet" href="{% static 'css/agregar_producto.css' %}" />
+
+  <style>
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    @keyframes slideOut {
+      from { transform: translateX(0); opacity: 1; }
+      to { transform: translateX(100%); opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h2 class="h2_envios">Ingresa tu dirección de envío o selecciona retiro en sucursal</h2>
+
+  <!-- ✨ NUEVO: Panel de direcciones guardadas -->
+  <div id="direcciones-guardadas" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; display: none;">
+    <h4 style="margin-top: 0; color: #495057;">📍 Direcciones guardadas</h4>
+    <div id="lista-direcciones"></div>
+    <button type="button" id="nueva-direccion-btn" style="margin-top: 10px; padding: 8px 15px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
+      ➕ Usar nueva dirección
+    </button>
+  </div>
+
+  <form method="post" id="direccion-form">
+    {% csrf_token %}
+
+    <p>
+      {{ form.opcion_entrega.label_tag }}
+      {{ form.opcion_entrega }}
+    </p>
+
+    <p>
+      {{ form.nombre_completo.label_tag }}
+      {{ form.nombre_completo }}
+    </p>
+ <p class="calle_y_numero">
+        <label> Calle y Número <span style="color: red;">*</span></label>
+        <small style="color: #666; font-size: 12px;">
+          📍 Ejemplo: Calle Morelos 123, Av. Juárez 456, etc.
+        </small><br />
+        {{ form.direccion }}
+        <div id="direccion-error" style="color: red; font-size: 12px; display: none; ">
+          ⚠️ Por favor incluye "Calle", "Avenida", "Av." o similar para una ubicación precisa
+        </div>
+        <div id="direccion-success" style="color: green; font-size: 12px; display: none;">
+          ✅ Calle y numero válidos
+        </div>
+      </p>
+    <div class="grid_datos_envio">
+      <p>
+        {{ form.telefono.label_tag }}
+        {{ form.telefono }}
+      </p>
+
+     
+
+      <p>
+        {{ form.ciudad.label_tag }}
+        {{ form.ciudad }}
+      </p>
+
+      <p>
+        {{ form.estado.label_tag }}
+        {{ form.estado }}
+      </p>
+
+      <p>
+        {{ form.codigo_postal.label_tag }}
+        {{ form.codigo_postal }}
+      </p>
+
+      <p id="propina-container">
+        {{ form.propina_voluntaria.label_tag }} <strong>MXN</strong> <span style="color: #666; font-size: 12px;">(Opcional)</span>
+        {{ form.propina_voluntaria }}
+      </p>
+    
+
+    <p class="propina">
+      {{ form.decidir_propina_despues }} {{ form.decidir_propina_despues.label_tag }}
+    </p>
+  </div> <!--CIERE GRID-->
+  
+    <!-- ✨ NUEVO: Checkbox para guardar dirección -->
+    <p style="margin-top: 15px; padding: 10px; background: #e8f4fd; border-radius: 5px;">
+      <input type="checkbox" id="guardar-direccion" name="guardar_direccion" checked>
+      <label for="guardar-direccion">💾 Recordar esta dirección para futuras compras</label>
+      <br><small style="color: #666;">Se guardará en tu navegador de forma segura</small>
+    </p>
+
+    <p class="textfield">
+      <label> Instrucciones de Entrega <span style="color: #28a745; font-size: 12px;">(Recomendado)</span></label>
+      <small style="color: #666; font-size: 12px;">
+        💡 Ej: "Casa azul con portón negro", "Tocar timbre 2 veces", "Entregar entre 2-6 PM"
+      </small><br />
+      <textfield>{{ form.notas }}</textfield>
+    </p>
+
+    <!-- MÉTODO DE PAGO -->
+    <label for="metodo_pago">Método de pago: <span style="color: red;">*</span></label>
+    <select name="metodo_pago" id="metodo_pago" required>
+        <option value="">-- Selecciona método de pago --</option>
+        {% if pago_tarjeta %}
+            <option value="tarjeta">Tarjeta de crédito/débito</option>
+        {% else %}
+            <option value="tarjeta" disabled>Tarjeta de crédito/débito (no disponible)</option>
+        {% endif %}
+
+        {% if pago_efectivo %}
+            <option value="efectivo">Efectivo al recibir</option>
+        {% else %}
+            <option value="efectivo" disabled>Efectivo al recibir (no disponible)</option>
+        {% endif %}
+    </select>
+
+    <!-- Vista previa de cálculo de envío -->
+    <div id="envio-preview" style="margin-top: 15px; padding: 10px; background: #f8f9fa; border-radius: 5px; display: none;">
+      <p id="costo-envio-preview"><strong>💰 Costo base: $40.00 MXN</strong></p>
+      <small id="distancia-info" style="color: #666;">Complete todos los campos para calcular costo exacto</small>
+    </div>
+
+    <div id="resumen-total" style="margin-top: 20px;">
+      <h3>Resumen de pago</h3>
+      <p>Subtotal: <strong>$<span id="subtotal">{{ subtotal_productos }}</span> MXN</strong></p>
+      <p>Extras: <strong>$<span id="extras">{{ subtotal_extras }}</span> MXN</strong></p>
+      <p id="envio-linea" style="display: none;">
+        Envío a domicilio: <strong>$<span id="envio">40</span> MXN</strong>
+      </p>
+      <p>Propina: <strong>$<span id="propina">0</span> MXN</strong></p>
+      <hr />
+      <p><strong>Total a pagar: $<span id="total-final">{{ subtotal_total }}</span> MXN</strong></p>
+    </div>
+
+    <button type="submit" id="btn-submit">Continuar</button>
+  </form>
+
+  <p><a href="{% url 'ver_carrito' %}" class="back-btn">Regresar</a></p>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const subtotal = parseFloat(document.getElementById('subtotal').textContent) || 0;
+      const extras = parseFloat(document.getElementById('extras').textContent) || 0;
+      const envioSpan = document.getElementById('envio');
+      const envioLinea = document.getElementById('envio-linea');
+      const opcionEntrega = document.querySelector('select[name="opcion_entrega"]');
+      const propinaInput = document.querySelector('input[name="propina_voluntaria"]');
+      const decidirPropinaCheckbox = document.querySelector('input[name="decidir_propina_despues"]');
+      const totalFinalSpan = document.getElementById('total-final');
+      const propinaContainer = document.getElementById('propina-container');
+      const envioPreview = document.getElementById('envio-preview');
+      
+      // Campos de dirección
+      const addressFields = ['direccion', 'ciudad', 'estado', 'codigo_postal'].map(
+        name => document.querySelector(`[name="${name}"]`)
+      );
+      const direccionInput = document.querySelector('input[name="direccion"]');
+      const ciudadInput = document.querySelector('input[name="ciudad"]');
+      const estadoInput = document.querySelector('input[name="estado"]');
+      const codigoPostalInput = document.querySelector('input[name="codigo_postal"]');
+      const nombreCompletoInput = document.querySelector('input[name="nombre_completo"]');
+      const telefonoInput = document.querySelector('input[name="telefono"]');
+      
+      const costoEnvioPreview = document.getElementById('costo-envio-preview');
+      const distanciaInfo = document.getElementById('distancia-info');
+      const direccionError = document.getElementById('direccion-error');
+      const direccionSuccess = document.getElementById('direccion-success');
+
+      // ✨ NUEVOS: Elementos para caché de direcciones
+      const direccionesGuardadasPanel = document.getElementById('direcciones-guardadas');
+      const listaDirecciones = document.getElementById('lista-direcciones');
+      const nuevaDireccionBtn = document.getElementById('nueva-direccion-btn');
+      const guardarDireccionCheckbox = document.getElementById('guardar-direccion');
+
+      let envioPrecio = 40;
+
+      // ✨ SISTEMA DE CACHÉ DE DIRECCIONES
+      class DireccionCache {
+        constructor() {
+          this.storageKey = 'direcciones_cliente';
+        }
+
+        obtenerDirecciones() {
+          try {
+            const direcciones = JSON.parse(localStorage.getItem(this.storageKey) || '[]');
+            return direcciones;
+          } catch (error) {
+            console.error('Error al leer direcciones del caché:', error);
+            return [];
+          }
+        }
+
+        guardarDireccion(direccion) {
+          try {
+            const direcciones = this.obtenerDirecciones();
+            
+            const existeIndex = direcciones.findIndex(d => 
+              d.direccion.toLowerCase() === direccion.direccion.toLowerCase() &&
+              d.ciudad.toLowerCase() === direccion.ciudad.toLowerCase()
+            );
+
+            if (existeIndex >= 0) {
+              direcciones[existeIndex] = {
+                ...direccion,
+                ultimoUso: new Date().toISOString(),
+                vecesUsada: (direcciones[existeIndex].vecesUsada || 0) + 1
+              };
+            } else {
+              direcciones.push({
+                ...direccion,
+                id: Date.now(),
+                fechaCreacion: new Date().toISOString(),
+                ultimoUso: new Date().toISOString(),
+                vecesUsada: 1
+              });
+            }
+
+            direcciones.sort((a, b) => new Date(b.ultimoUso) - new Date(a.ultimoUso));
+            if (direcciones.length > 5) {
+              direcciones.splice(5);
+            }
+
+            localStorage.setItem(this.storageKey, JSON.stringify(direcciones));
+            return true;
+          } catch (error) {
+            console.error('Error al guardar dirección:', error);
+            return false;
+          }
+        }
+
+        eliminarDireccion(id) {
+          try {
+            const direcciones = this.obtenerDirecciones();
+            const direccionesFiltradas = direcciones.filter(d => d.id !== id);
+            localStorage.setItem(this.storageKey, JSON.stringify(direccionesFiltradas));
+            return true;
+          } catch (error) {
+            console.error('Error al eliminar dirección:', error);
+            return false;
+          }
+        }
+      }
+
+      const direccionCache = new DireccionCache();
+
+      // ✨ CARGAR DIRECCIONES GUARDADAS
+      function cargarDireccionesGuardadas() {
+        const direcciones = direccionCache.obtenerDirecciones();
+        
+        if (direcciones.length === 0) {
+          direccionesGuardadasPanel.style.display = 'none';
+          return;
+        }
+
+        direccionesGuardadasPanel.style.display = 'block';
+        listaDirecciones.innerHTML = '';
+
+        direcciones.forEach(direccion => {
+          const div = document.createElement('div');
+          div.style.cssText = `
+            margin-bottom: 10px; 
+            padding: 12px; 
+            background: white; 
+            border: 1px solid #dee2e6; 
+            border-radius: 6px; 
+            cursor: pointer;
+            transition: all 0.2s;
+          `;
+
+          div.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+              <div style="flex: 1;">
+                <strong>${direccion.nombre_completo || 'Sin nombre'}</strong><br>
+                <span style="color: #495057;">${direccion.direccion}</span><br>
+                <span style="color: #6c757d; font-size: 14px;">
+                  ${direccion.ciudad}, ${direccion.estado || ''} ${direccion.codigo_postal || ''}
+                </span><br>
+                <small style="color: #28a745;">
+                  📞 ${direccion.telefono || 'Sin teléfono'} | 
+                  🕒 Usado ${direccion.vecesUsada || 1} veces
+                </small>
+              </div>
+              <div style="display: flex; gap: 5px;">
+                <button type="button" onclick="usarDireccion(${direccion.id})" 
+                        style="padding: 5px 10px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                  ✓ Usar
+                </button>
+                <button type="button" onclick="eliminarDireccionGuardada(${direccion.id})" 
+                        style="padding: 5px 8px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                  🗑️
+                </button>
+              </div>
+            </div>
+          `;
+
+          div.addEventListener('mouseenter', () => {
+            div.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
+            div.style.transform = 'translateY(-1px)';
+          });
+          div.addEventListener('mouseleave', () => {
+            div.style.boxShadow = 'none';
+            div.style.transform = 'none';
+          });
+
+          listaDirecciones.appendChild(div);
+        });
+      }
+
+      // ✨ USAR DIRECCIÓN GUARDADA
+      window.usarDireccion = function(id) {
+        const direcciones = direccionCache.obtenerDirecciones();
+        const direccion = direcciones.find(d => d.id === id);
+        
+        if (!direccion) return;
+
+        if (nombreCompletoInput) nombreCompletoInput.value = direccion.nombre_completo || '';
+        if (telefonoInput) telefonoInput.value = direccion.telefono || '';
+        if (direccionInput) direccionInput.value = direccion.direccion || '';
+        if (ciudadInput) ciudadInput.value = direccion.ciudad || '';
+        if (estadoInput) estadoInput.value = direccion.estado || '';
+        if (codigoPostalInput) codigoPostalInput.value = direccion.codigo_postal || '';
+
+        if (opcionEntrega.value !== 'domicilio') {
+          opcionEntrega.value = 'domicilio';
+          toggleAddressFields();
+        }
+
+        direccion.ultimoUso = new Date().toISOString();
+        direccion.vecesUsada = (direccion.vecesUsada || 0) + 1;
+        direccionCache.guardarDireccion(direccion);
+
+        mostrarValidacionDireccion();
+        calcularEnvioPorDistancia();
+        
+        // ✨ NUEVO: Scroll hacia el campo de propina y enfocarlo
+        setTimeout(() => {
+          if (propinaInput && propinaContainer && propinaContainer.style.display !== 'none') {
+            propinaInput.scrollIntoView({ 
+              behavior: 'smooth', 
+              block: 'center' 
+            });
+            
+            // Enfocar el campo de propina después de un breve delay para que el scroll se complete
+            setTimeout(() => {
+              propinaInput.focus();
+              propinaInput.select(); // Seleccionar todo el texto si hay alguno
+            }, 500);
+          } else {
+            // Si no hay campo de propina visible, scroll al formulario
+            document.getElementById('direccion-form').scrollIntoView({ 
+              behavior: 'smooth', 
+              block: 'start' 
+            });
+          }
+        }, 200);
+
+        mostrarToast('✅ Dirección cargada correctamente', '#28a745');
+      };
+
+      // ✨ ELIMINAR DIRECCIÓN GUARDADA
+      window.eliminarDireccionGuardada = function(id) {
+        if (confirm('¿Estás seguro de eliminar esta dirección guardada?')) {
+          direccionCache.eliminarDireccion(id);
+          cargarDireccionesGuardadas();
+          mostrarToast('🗑️ Dirección eliminada', '#dc3545');
+        }
+      };
+
+      // ✨ FUNCIÓN PARA MOSTRAR NOTIFICACIONES
+      function mostrarToast(mensaje, color) {
+        const toast = document.createElement('div');
+        toast.style.cssText = `
+          position: fixed; top: 20px; right: 20px; z-index: 1000;
+          background: ${color}; color: white; padding: 12px 20px;
+          border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+          animation: slideIn 0.3s ease;
+        `;
+        toast.textContent = mensaje;
+        document.body.appendChild(toast);
+
+        setTimeout(() => {
+          toast.style.animation = 'slideOut 0.3s ease forwards';
+          setTimeout(() => toast.remove(), 300);
+        }, 2500);
+      }
+
+      // ✨ AUTOCOMPLETAR DATOS DESDE CACHÉ
+      function autocompletarDesdeCshe() {
+        const direcciones = direccionCache.obtenerDirecciones();
+        if (direcciones.length > 0) {
+          const direccionReciente = direcciones[0];
+          
+          if (!nombreCompletoInput?.value && direccionReciente.nombre_completo) {
+            nombreCompletoInput.value = direccionReciente.nombre_completo;
+          }
+          if (!telefonoInput?.value && direccionReciente.telefono) {
+            telefonoInput.value = direccionReciente.telefono;
+          }
+        }
+      }
+
+      // ✨ BOTÓN NUEVA DIRECCIÓN
+      if (nuevaDireccionBtn) {
+        nuevaDireccionBtn.addEventListener('click', () => {
+          if (nombreCompletoInput) nombreCompletoInput.value = '';
+          if (telefonoInput) telefonoInput.value = '';
+          if (direccionInput) direccionInput.value = '';
+          if (ciudadInput) ciudadInput.value = '';
+          if (estadoInput) estadoInput.value = '';
+          if (codigoPostalInput) codigoPostalInput.value = '';
+          
+          direccionesGuardadasPanel.style.display = 'none';
+          
+          if (nombreCompletoInput) nombreCompletoInput.focus();
+        });
+      }
+
+      // VALIDACIÓN DE DIRECCIÓN
+      function validarDireccion(direccion) {
+        if (!direccion || direccion.trim().length < 5) {
+          return { valida: false, mensaje: 'La dirección es muy corta' };
+        }
+
+        const tieneNumeros = /\d/.test(direccion);
+        if (!tieneNumeros) {
+          return { 
+            valida: false, 
+            mensaje: 'Incluya el número de la dirección' 
+          };
+        }
+
+        return { valida: true, mensaje: 'Calle y numero válidos' };
+      }
+
+      function mostrarValidacionDireccion() {
+        const direccion = direccionInput?.value?.trim();
+        
+        if (!direccion) {
+          direccionError.style.display = 'none';
+          direccionSuccess.style.display = 'none';
+          return true;
+        }
+
+        const validacion = validarDireccion(direccion);
+        
+        if (validacion.valida) {
+          direccionError.style.display = 'none';
+          direccionSuccess.style.display = 'block';
+          direccionSuccess.textContent = `✅ ${validacion.mensaje}`;
+          return true;
+        } else {
+          direccionError.style.display = 'block';
+          direccionSuccess.style.display = 'none';
+          direccionError.textContent = `⚠️ ${validacion.mensaje}`;
+          return false;
+        }
+      }
+
+      function toggleAddressFields() {
+        const isDomicilio = opcionEntrega.value === 'domicilio';
+        addressFields.forEach(field => {
+          if (field) {
+            field.disabled = !isDomicilio;
+            const container = field.closest('p') || field.parentElement;
+            if (container) container.style.display = isDomicilio ? 'block' : 'none';
+          }
+        });
+        
+        if (envioPreview) envioPreview.style.display = isDomicilio ? 'block' : 'none';
+        if (guardarDireccionCheckbox) {
+          const container = guardarDireccionCheckbox.closest('p');
+          if (container) container.style.display = isDomicilio ? 'block' : 'none';
+        }
+        
+        if (!isDomicilio) {
+          envioPrecio = 0;
+          direccionError.style.display = 'none';
+          direccionSuccess.style.display = 'none';
+          direccionesGuardadasPanel.style.display = 'none';
+        } else {
+          envioPrecio = 40;
+          cargarDireccionesGuardadas();
+          calcularEnvioPorDistancia();
+        }
+      }
+
+      function togglePropinaField() {
+        const isChecked = decidirPropinaCheckbox.checked;
+        if (propinaContainer) propinaContainer.style.display = isChecked ? 'none' : 'block';
+      }
+
+      function actualizarTotal() {
+        let total = subtotal + extras;
+
+        const isDomicilio = opcionEntrega.value === 'domicilio';
+        if (isDomicilio) {
+          envioLinea.style.display = 'block';
+          total += envioPrecio;
+        } else {
+          envioLinea.style.display = 'none';
+          envioPrecio = 0;
+        }
+
+        let propina = 0;
+        if (!decidirPropinaCheckbox.checked && propinaInput && propinaInput.value) {
+          propina = parseFloat(propinaInput.value) || 0;
+        }
+
+        total += propina;
+        totalFinalSpan.textContent = total.toFixed(2);
+        envioSpan.textContent = envioPrecio.toFixed(2);
+        document.getElementById('propina').textContent = propina.toFixed(2);
+      }
+
+      // CÁLCULO DE ENVÍO
+      function calcularEnvioPorDistancia() {
+        const isDomicilio = opcionEntrega.value === 'domicilio';
+        
+        if (!isDomicilio) {
+          envioPrecio = 0;
+          actualizarTotal();
+          return;
+        }
+
+        const direccion = direccionInput?.value?.trim();
+        const ciudad = ciudadInput?.value?.trim();
+        const estado = estadoInput?.value?.trim();
+        const codigoPostal = codigoPostalInput?.value?.trim();
+
+        const direccionValida = mostrarValidacionDireccion();
+
+        if (direccion && ciudad && direccionValida) {
+          if (costoEnvioPreview) {
+            costoEnvioPreview.innerHTML = '<strong>🔄 Calculando ubicación y distancia...</strong>';
+          }
+          if (distanciaInfo) {
+            distanciaInfo.textContent = 'Buscando la mejor ruta...';
+            distanciaInfo.style.color = '#007bff';
+          }
+
+          fetch('{% url "calcular_envio_ajax" %}', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: new URLSearchParams({
+              'direccion': direccion,
+              'ciudad': ciudad,
+              'estado': estado,
+              'codigo_postal': codigoPostal
+            })
+          })
+          .then(response => {
+            if (!response.ok) {
+              throw new Error(`HTTP ${response.status}`);
+            }
+            return response.json();
+          })
+          .then(data => {
+            console.log('📊 Respuesta del servidor:', data);
+            
+            if (data.success && data.costo) {
+              envioPrecio = parseFloat(data.costo);
+              
+              if (costoEnvioPreview) {
+                costoEnvioPreview.innerHTML = `<strong>💰 Costo de envío: ${envioPrecio.toFixed(2)} MXN</strong>`;
+              }
+              
+              if (distanciaInfo && data.distancia) {
+                distanciaInfo.textContent = `📍 Distancia: ${data.distancia}`;
+                distanciaInfo.style.color = '#28a745';
+              }
+            } else if (data.error) {
+              envioPrecio = parseFloat(data.costo) || 40;
+              
+              if (costoEnvioPreview) {
+                costoEnvioPreview.innerHTML = `<strong>⚠️ Costo base: ${envioPrecio.toFixed(2)} MXN</strong>`;
+              }
+              
+              if (distanciaInfo) {
+                distanciaInfo.textContent = `⚠️ ${data.error}`;
+                distanciaInfo.style.color = '#ff6b35';
+              }
+            } else {
+              envioPrecio = 40;
+              if (costoEnvioPreview) {
+                costoEnvioPreview.innerHTML = '<strong>⚠️ Costo base: $40.00 MXN</strong>';
+              }
+              if (distanciaInfo) {
+                distanciaInfo.textContent = 'Respuesta inesperada del servidor';
+                distanciaInfo.style.color = '#ff6b35';
+              }
+            }
+            
+            actualizarTotal();
+          })
+          .catch(error => {
+            console.error('❌ Error en cálculo de envío:', error);
+            envioPrecio = 40;
+            
+            if (costoEnvioPreview) {
+              costoEnvioPreview.innerHTML = '<strong>❌ Error: Costo base $40.00 MXN</strong>';
+            }
+            if (distanciaInfo) {
+              if (error.message.includes('HTTP')) {
+                distanciaInfo.textContent = '🌐 Error de conexión - se aplicó tarifa base';
+              } else {
+                distanciaInfo.textContent = '❌ Error técnico - se aplicó tarifa base';
+              }
+              distanciaInfo.style.color = '#dc3545';
+            }
+            
+            actualizarTotal();
+          });
+        } else {
+          envioPrecio = 40;
+          
+          if (costoEnvioPreview) {
+            if (!direccionValida) {
+              costoEnvioPreview.innerHTML = '<strong>⚠️ Complete la dirección</strong>';
+            } else {
+              costoEnvioPreview.innerHTML = '<strong>📝 Complete ciudad para calcular</strong>';
+            }
+          }
+          
+          if (distanciaInfo) {
+            if (!direccionValida) {
+              distanciaInfo.textContent = 'Agregue números a la dirección';
+            } else {
+              distanciaInfo.textContent = 'Complete la ciudad para calcular';
+            }
+            distanciaInfo.style.color = '#666';
+          }
+          
+          actualizarTotal();
+        }
+      }
+
+      // EVENTOS
+      let timeoutId;
+      function calcularConDelay() {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(calcularEnvioPorDistancia, 1500);
+      }
+
+      if (direccionInput) {
+        direccionInput.addEventListener('input', () => {
+          mostrarValidacionDireccion();
+          calcularConDelay();
+        });
+        direccionInput.addEventListener('blur', mostrarValidacionDireccion);
+      }
+
+      if (ciudadInput) ciudadInput.addEventListener('input', calcularConDelay);
+      if (estadoInput) estadoInput.addEventListener('input', calcularConDelay);
+      if (codigoPostalInput) codigoPostalInput.addEventListener('input', calcularConDelay);
+
+      // ✨ VALIDACIÓN COMPLETA Y GUARDAR DIRECCIÓN AL ENVIAR FORMULARIO
+      const form = document.getElementById('direccion-form');
+      if (form) {
+        form.addEventListener('submit', (e) => {
+          const errores = [];
+          const isDomicilio = opcionEntrega.value === 'domicilio';
+          
+          // ✨ VALIDAR CAMPOS DE DIRECCIÓN (solo si es domicilio)
+          if (isDomicilio) {
+            const direccion = direccionInput?.value?.trim();
+            const validacion = validarDireccion(direccion);
+            
+            if (!validacion.valida) {
+              errores.push(`🏠 Dirección: ${validacion.mensaje}`);
+            }
+
+            // Validar campos obligatorios de dirección
+            if (!nombreCompletoInput?.value?.trim()) {
+              errores.push('👤 Nombre completo es obligatorio');
+            }
+            if (!telefonoInput?.value?.trim()) {
+              errores.push('📞 Teléfono es obligatorio');
+            }
+            if (!ciudadInput?.value?.trim()) {
+              errores.push('🏙️ Ciudad es obligatoria');
+            }
+          }
+
+          // ✨ VALIDAR PROPINA (solo si no decidirá después)
+          if (!decidirPropinaCheckbox?.checked) {
+            const propinaValue = propinaInput?.value?.trim();
+            if (!propinaValue || propinaValue === '') {
+              // Propina opcional - no es error si está vacía
+              // Solo validar si hay un valor ingresado
+            } else if (isNaN(parseFloat(propinaValue))) {
+              errores.push('💰 Propina: Ingrese un monto válido');
+            } else {
+              const propinaMonto = parseFloat(propinaValue);
+              if (propinaMonto < 0) {
+                errores.push('💰 Propina: El monto no puede ser negativo');
+              }
+            }
+          }
+
+          // ✨ VALIDAR MÉTODO DE PAGO
+          const metodoPago = document.getElementById('metodo_pago');
+          if (!metodoPago?.value) {
+            errores.push('💳 Seleccione un método de pago');
+          }
+
+          // ✨ ADVERTENCIA PARA NOTAS DE ENTREGA (opcional pero recomendado)
+          const notasInput = document.querySelector('textarea[name="notas"], input[name="notas"]');
+          const tieneNotas = notasInput?.value?.trim();
+          
+          if (isDomicilio && !tieneNotas) {
+            const confirmarSinNotas = confirm(
+              '📝 RECOMENDACIÓN:\n\n' +
+              'No has agregado instrucciones de entrega.\n\n' +
+              '• ¿Hay referencias para encontrar tu domicilio?\n' +
+              '• ¿Horario preferido de entrega?\n' +
+              '• ¿Alguna indicación especial?\n\n' +
+              '¿Deseas continuar sin instrucciones de entrega?'
+            );
+            
+            if (!confirmarSinNotas) {
+              e.preventDefault();
+              if (notasInput) notasInput.focus();
+              return false;
+            }
+          }
+
+          // ✨ SI HAY ERRORES, MOSTRARLOS Y DETENER ENVÍO
+          if (errores.length > 0) {
+            e.preventDefault();
+            
+            const mensajeError = '⚠️ CAMPOS REQUERIDOS:\n\n' + 
+                               errores.map(error => `• ${error}`).join('\n') + 
+                               '\n\nPor favor complete todos los campos antes de continuar.';
+            
+            alert(mensajeError);
+            
+            // Enfocar el primer campo con error
+            if (isDomicilio && !nombreCompletoInput?.value?.trim()) {
+              nombreCompletoInput?.focus();
+            } else if (isDomicilio && !telefonoInput?.value?.trim()) {
+              telefonoInput?.focus();
+            } else if (isDomicilio && !direccionInput?.value?.trim()) {
+              direccionInput?.focus();
+            } else if (!decidirPropinaCheckbox?.checked && (!propinaInput?.value?.trim() || isNaN(parseFloat(propinaInput.value)))) {
+              propinaInput?.focus();
+            } else if (!metodoPago?.value) {
+              metodoPago?.focus();
+            }
+            
+            return false;
+          }
+
+          // ✨ GUARDAR DIRECCIÓN SI TODO ESTÁ CORRECTO
+          if (isDomicilio && guardarDireccionCheckbox && guardarDireccionCheckbox.checked) {
+            const datosParaGuardar = {
+              nombre_completo: nombreCompletoInput?.value?.trim() || '',
+              telefono: telefonoInput?.value?.trim() || '',
+              direccion: direccionInput?.value?.trim() || '',
+              ciudad: ciudadInput?.value?.trim() || '',
+              estado: estadoInput?.value?.trim() || '',
+              codigo_postal: codigoPostalInput?.value?.trim() || ''
+            };
+            
+            if (direccionCache.guardarDireccion(datosParaGuardar)) {
+              console.log('✅ Dirección guardada en caché');
+            } else {
+              console.warn('⚠️ No se pudo guardar la dirección');
+            }
+          }
+
+          // ✨ MOSTRAR CONFIRMACIÓN FINAL
+          const confirmarPedido = confirm(
+            '🛒 CONFIRMAR PEDIDO\n\n' +
+            `💰 Total a pagar: ${totalFinalSpan.textContent} MXN\n` +
+            `🚚 Método: ${isDomicilio ? 'Envío a domicilio' : 'Retiro en sucursal'}\n` +
+            `💳 Pago: ${metodoPago.options[metodoPago.selectedIndex].text}\n\n` +
+            '¿Confirma que desea proceder con este pedido?'
+          );
+
+          if (!confirmarPedido) {
+            e.preventDefault();
+            return false;
+          }
+        });
+      }
+
+      // EVENT LISTENERS PRINCIPALES
+      opcionEntrega.addEventListener('change', () => {
+        toggleAddressFields();
+        actualizarTotal();
+      });
+      
+      if (decidirPropinaCheckbox) {
+        decidirPropinaCheckbox.addEventListener('change', () => {
+          togglePropinaField();
+          actualizarTotal();
+        });
+      }
+      
+      if (propinaInput) propinaInput.addEventListener('input', actualizarTotal);
+
+      // ✨ INICIALIZACIÓN
+      toggleAddressFields();
+      togglePropinaField();
+      actualizarTotal();
+      
+      // Autocompletar datos básicos al cargar
+      autocompletarDesdeCshe();
+    });
+  </script>
+
+</div>
+</body>
+</html>
